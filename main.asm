@@ -665,7 +665,7 @@ skip_tail_delete:
     ; Schlange wächst
     ; counter erhöhen
     inc counter
-	;rcall set_apfel !!!!! TESTWEISE AUS UND DURCH APPLENEEDEDFLAG ERSETZT
+	
     cpi counter, SNAKE_MAX
     brlo finish
     ; Wenn counter > MAX ? Game Over
