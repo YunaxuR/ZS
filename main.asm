@@ -8,7 +8,7 @@
 .def tmp6 = r16
 .def counter = r21
 .def direction = r20  ; 0->up , 1->right, 2->down, 4->left
-; SCHLANGEN OFFSET (x*8+y)
+; SCHLANGEN OFFSET (x+y*8)
 .def TailIndex = r19
 .def HeadIndex = r18
 .def grow_flag = r15
@@ -50,18 +50,18 @@ display:
     ; Zeilenauswahl starten (erste Zeile = Bit 0 aktiv)
     ldi tmp, 0b00000001     ; Zeilenwahl-Register (PORTD)
 
-    ; Zeilenzähler
+    ; ZeilenzÃ¤hler
     ldi tmp4, 8
 
 next_line:
-    ; tmp2 = Bitmuster für aktuelle Zeile (Spalten)
+    ; tmp2 = Bitmuster fÃ¼r aktuelle Zeile (Spalten)
     ldi tmp2, 0             ; Spaltenmuster aufbauen
 
-    ; Schleife über 8 Bytes ? für 8 Pixel in der Zeile
-    ldi tmp5, 8              ; Zählregister
+    ; Schleife Ã¼ber 8 Bytes ? fÃ¼r 8 Pixel in der Zeile
+    ldi tmp5, 8              ; ZÃ¤hlregister
 
 build_row:
-    ld tmp6, Z+              ; Lade Byte aus SRAM (Z zeigt automatisch auf nächste Adresse)
+    ld tmp6, Z+              ; Lade Byte aus SRAM (Z zeigt automatisch auf nÃ¤chste Adresse)
     andi tmp6, 0x01          ; Nur LSB ist relevant
     lsl tmp2                ; Schiebe tmp2 nach links
     or tmp2, tmp6           ; Setze LSB von tmp2 entsprechend Bitstatus
@@ -72,7 +72,7 @@ build_row:
     com tmp2                ; Invertiere Spaltenmuster (wegen active LOW)
 
     ; Bitreihenfolge umdrehen
-    ldi tmp3, 0             ; Zielregister für gespiegeltes Muster
+    ldi tmp3, 0             ; Zielregister fÃ¼r gespiegeltes Muster
     lsl tmp2
     ror tmp3
     lsl tmp2
@@ -95,12 +95,12 @@ build_row:
     out PORTD, tmp          ; Zeilenauswahl
     rcall wait              ; kurze Anzeigepause
 
-    ; Zeile deaktivieren für sauberen Multiplex
+    ; Zeile deaktivieren fÃ¼r sauberen Multiplex
     ldi tmp5, 0
     out PORTD, tmp5
-    ;rcall wait              ; kurze Pause zum "Löschen"
+    ;rcall wait              ; kurze Pause zum "LÃ¶schen"
 
-    ; Nächste Zeile vorbereiten
+    ; NÃ¤chste Zeile vorbereiten
     lsl tmp                 ; Zeilenauswahlbit verschieben
     dec tmp4
     brne next_line
@@ -128,7 +128,7 @@ wait1:
 ; Timer interrupt
 
 TIMER_OVF1:
-    ; Startwert erneut laden für nächsten Interrupt
+    ; Startwert erneut laden fÃ¼r nÃ¤chsten Interrupt
     ldi tmp, high(0x0BDC)
     sts TCNT1H, tmp
     ldi tmp, low(0x0BDC)
@@ -148,7 +148,7 @@ TIMER_OVF1:
 TIMER_OVF0:
 	rcall display
 	reti
-; --------- INTERRUPT ROUTINE UM AUF TASTENDRUCK DIRECTION REGISTER ZU ÄNDERN
+; --------- INTERRUPT ROUTINE UM AUF TASTENDRUCK DIRECTION REGISTER ZU Ã„NDERN
 PCINT1_vect:
 	
 	push tmp
@@ -159,12 +159,12 @@ PCINT1_vect:
     lds tmp2, old_pinc    ; alter Zustand
     sts old_pinc, tmp     ; neuen Zustand merken
 
-    ; tmp3 = Änderung von 1 ? 0 (fallende Flanke)
+    ; tmp3 = Ã„nderung von 1 ? 0 (fallende Flanke)
     mov tmp3, tmp         ; tmp3 = aktueller Zustand
     com tmp3              ; invertiere: 0 ? 1
     and tmp3, tmp2        ; nur dort, wo alt=1 und neu=0
 
-    ; Prüfe jede Taste
+    ; PrÃ¼fe jede Taste
     sbrs tmp3, PC2
     rjmp not_down
     ldi direction, 2
@@ -224,7 +224,7 @@ RESET:
 	out	SPH,tmp	
 
 	;-----------------------------
-	; SRAM 0x0100–0x013F (64 Bytes) mit 0 füllen
+	; SRAM 0x0100â€“0x013F (64 Bytes) mit 0 fÃ¼llen
 	;-----------------------------
 	ldi ZH, high(0x0100)   ; Zeiger auf Startadresse
 	ldi ZL, low(0x0100)
@@ -252,7 +252,7 @@ RESET:
 	ldi tmp, (1 << ADEN) | (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0) ; Prescaler 128
 	sts ADCSRA, tmp
 
-	ldi tmp, (1 << REFS0) ; AVcc als Referenz, ADC0 als Kanal (oder ändern)
+	ldi tmp, (1 << REFS0) ; AVcc als Referenz, ADC0 als Kanal (oder Ã¤ndern)
 	sts ADMUX, tmp
 	rcall wait
 	rcall read_adc_scaled
@@ -282,19 +282,19 @@ RESET:
 	ldi tmp, 0b00000000 ; 0b00000001 zum aktivieren - GERADE DEAKTIVIERT
 	sts TIMSK0, tmp
 
-	; Speichere PINC für fallende Flanken Erkennung
+	; Speichere PINC fÃ¼r fallende Flanken Erkennung
 	in tmp, PINC
 	sts old_pinc, tmp
 
-	; Aktiviere PCINT10–13 (PC2–PC5)
+	; Aktiviere PCINT10â€“13 (PC2â€“PC5)
 	ldi r16, (1 << PCINT10) | (1 << PCINT11) | (1 << PCINT12) | (1 << PCINT13)
-	sts PCMSK1, r16          ; PCMSK1 für Port C
+	sts PCMSK1, r16          ; PCMSK1 fÃ¼r Port C
 
-	; Aktiviere Pin Change Interrupt für Port C (PCIE1)
+	; Aktiviere Pin Change Interrupt fÃ¼r Port C (PCIE1)
 	ldi r16, (1 << PCIE1)
 	sts PCICR, r16
 
-	; ICH WÜRDE GERNE MIT TIMERN ARBEITEN ABER TIMER1 ODER TIMER0 LÖSEN QUASI DURCHGEHEND AUS DESHALB NOCH CLI, WIRD BEHOBEN
+	; ICH WÃœRDE GERNE MIT TIMERN ARBEITEN ABER TIMER1 ODER TIMER0 LÃ–SEN QUASI DURCHGEHEND AUS DESHALB NOCH CLI, WIRD BEHOBEN
 	;sei
 	cli
 	rjmp start
@@ -307,8 +307,8 @@ RESET:
 start:
 
 
-	; PC2–PC5 sind Eingänge mit Pullup (also: gedrückt = 0)
-    ; Lies PINC und prüfe, ob einer der Bits 2–5 = 0 ist
+	; PC2â€“PC5 sind EingÃ¤nge mit Pullup (also: gedrÃ¼ckt = 0)
+    ; Lies PINC und prÃ¼fe, ob einer der Bits 2â€“5 = 0 ist
 
 
 wait_for_button:
@@ -321,16 +321,16 @@ wait_for_button:
 
 	in tmp, PINC          ; Lese aktuellen Zustand
 
-	sbrs tmp, 2           ; Prüfe PC2 (Down), überspringe wenn NICHT gedrückt
+	sbrs tmp, 2           ; PrÃ¼fe PC2 (Down), Ã¼berspringe wenn NICHT gedrÃ¼ckt
 	rjmp button_down
 
-	sbrs tmp, 3           ; Prüfe PC3 (Right)
+	sbrs tmp, 3           ; PrÃ¼fe PC3 (Right)
 	rjmp button_right
 
-	sbrs tmp, 4           ; Prüfe PC4 (Up)
+	sbrs tmp, 4           ; PrÃ¼fe PC4 (Up)
 	rjmp button_up
 
-	sbrs tmp, 5           ; Prüfe PC5 (Left)
+	sbrs tmp, 5           ; PrÃ¼fe PC5 (Left)
 	rjmp button_left
     
 
@@ -432,7 +432,7 @@ wait_adc:
     lds tmp2, ADCL
     lds tmp3, ADCH
 
-    ; Skaliere 10 Bit auf 6 Bit (0–63)
+    ; Skaliere 10 Bit auf 6 Bit (0â€“63)
     lsr tmp3
     ror tmp2
     lsr tmp3
@@ -442,7 +442,7 @@ wait_adc:
     lsr tmp3
     ror tmp2
 
-    ; Jetzt ist tmp2 = Wert 0–63
+    ; Jetzt ist tmp2 = Wert 0â€“63
 
     ret
 
@@ -451,10 +451,10 @@ wait_adc:
 
 
 
-; --------------- GENERTIERT WERT IN tmp2 von 0-63 und lässt diesen Pixel dann aufleuchten im SRAM bzw, setzt ihn auf 0b00000011 ---------
-; TODO ----> PRÜFEN OB PIXEL BEREITS AN IST. WENN JA -> set_rpixel ERNEUT AUFRUFEN
+; --------------- GENERTIERT WERT IN tmp2 von 0-63 und lÃ¤sst diesen Pixel dann aufleuchten im SRAM bzw, setzt ihn auf 0b00000011 ---------
+; TODO ----> PRÃœFEN OB PIXEL BEREITS AN IST. WENN JA -> set_rpixel ERNEUT AUFRUFEN
 set_rpixel:
-rcall read_adc_scaled        ; liefert tmp2 = 0–63
+rcall read_adc_scaled        ; liefert tmp2 = 0â€“63
 
     ; Z auf Zieladresse setzen
     ldi ZH, high(0x0100)
@@ -474,10 +474,10 @@ rcall read_adc_scaled        ; liefert tmp2 = 0–63
 
 ;=====================================================
 ; Snake bewegt sich 1 Schritt in aktuelle Richtung
-; - prüft auf Kollision
+; - prÃ¼ft auf Kollision
 ; - erkennt Apfel
 ; - setzt neuen Kopf
-; - löscht alten Schwanz (nur wenn nicht wachsen)
+; - lÃ¶scht alten Schwanz (nur wenn nicht wachsen)
 ;=====================================================
 snake_move:
     push tmp
@@ -523,7 +523,7 @@ direction_error:
 
 direction_ok:
     ;===========================
-    ; 3. Feld prüfen
+    ; 3. Feld prÃ¼fen
     ldi ZH, high(0x0100)
     ldi ZL, low(0x0100)
     add ZL, tmp
@@ -562,7 +562,7 @@ skip_wrap_h:
     st Z, tmp
 
     ;===========================
-    ; 6. Schwanz löschen wenn nicht wachsen
+    ; 6. Schwanz lÃ¶schen wenn nicht wachsen
     tst grow_flag
     brne skip_tail_delete
 
@@ -588,12 +588,12 @@ skip_wrap_h:
     ldi TailIndex, 0
 skip_wrap_t:
 
-    dec counter        ; Länge bleibt gleich
+    dec counter        ; LÃ¤nge bleibt gleich
     rjmp finish
 
 skip_tail_delete:
-    ; Schlange wächst
-    ; counter erhöhen
+    ; Schlange wÃ¤chst
+    ; counter erhÃ¶hen
     inc counter
     cpi counter, SNAKE_MAX
     brlo finish
@@ -647,6 +647,6 @@ snake_init:
 	; REGISTER setzen
 	ldi HeadIndex, 1      ; Zeigt auf Kopf (Position mit 27)
 	ldi TailIndex, 0      ; Zeigt auf Schwanz (Position mit 26)
-	ldi counter, 2        ; Länge = 2
+	ldi counter, 2        ; LÃ¤nge = 2
 
 	ret
