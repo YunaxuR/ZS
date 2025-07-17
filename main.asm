@@ -8,10 +8,11 @@
 .def tmp6 = r16
 .def counter = r21
 .def direction = r20  ; 0->up , 1->right, 2->down, 4->left
-; SCHLANGEN OFFSET (x+y*8)
+; SCHLANGEN OFFSET (x*8+y)
 .def TailIndex = r19
 .def HeadIndex = r18
 .def grow_flag = r15
+.def new_apple_needed = r14
 .def __zero_reg__ = r1
 
 .equ old_pinc = 0x01C7
@@ -34,7 +35,7 @@
 ; PORTD = Zeilenauswahl (1 aktives Bit)
 ;=========================================================================
 
-display:
+display: ; 
     ;-------------------------------        
     ; Register sichern
     push tmp
@@ -113,6 +114,7 @@ build_row:
     ret
 
 
+
 ;	Wait function
 ;	- waits a defined time
 
@@ -137,7 +139,7 @@ TIMER_OVF1:
     ; --- dein Code, exakt jede 1 Sekunde hier ---
 	rcall snake_move
 
-	; PC1 LED toggeln um Timer arbeiten zu sehen
+	; PC1 LED toggeln um Timer arbeiten zu sehen =====> TOGGLEN AUCH MÖGLICH ÜBER SBIR !
     in tmp, PORTC
     ldi tmp2, (1 << PORTC1)
     eor tmp, tmp2
@@ -173,8 +175,7 @@ PCINT1_vect:
     pop tmp2
     pop tmp
     reti
-    ;rcall set_start_pixel
-    ;rjmp start_game
+
 not_down:
 
     sbrs tmp3, PC3
@@ -184,8 +185,7 @@ not_down:
     pop tmp2
     pop tmp
     reti
-    ;rcall set_start_pixel
-    ;rjmp start_game
+
 not_right:
 
     sbrs tmp3, PC4
@@ -195,8 +195,7 @@ not_right:
     pop tmp2
     pop tmp
     reti
-    ;rcall set_start_pixel
-    ;rjmp start_game
+
 not_up:
 
     sbrs tmp3, PC5
@@ -206,8 +205,7 @@ not_up:
     pop tmp2
     pop tmp
     reti
-    ;rcall set_start_pixel
-    ;rjmp start_game
+   
 not_left:
 
     pop tmp3
@@ -224,7 +222,7 @@ RESET:
 	out	SPH,tmp	
 
 	;-----------------------------
-	; SRAM 0x0100–0x013F (64 Bytes) mit 0 füllen
+	; SRAM 0x0100–0x013F (64 Bytes) mit 0 füllen - DISPLAY DATENSTRUKTUR
 	;-----------------------------
 	ldi ZH, high(0x0100)   ; Zeiger auf Startadresse
 	ldi ZL, low(0x0100)
@@ -232,10 +230,22 @@ RESET:
 	ldi tmp, 0x00          ; Wert 0 zum Schreiben
 	ldi tmp2, 64           ; 64 Bytes
 
-	clear_sram:
+	clear_sramD:
 		st Z+, tmp         ; Schreibe 0, Inkrementiere Z
 		dec tmp2
-		brne clear_sram    ; Wiederholen bis alle 64 geschrieben
+		brne clear_sramD   ; Wiederholen bis alle 64 geschrieben
+
+	;-----------------------------
+	; SRAM 0x01C8–xxxx (SNAKE_MAX Bytes) mit 0 füllen - SCHLANGE DATENSTRUKTUR
+	;-----------------------------
+	ldi ZH, high(SNAKE_START)   ; Zeiger auf Startadresse
+	ldi ZL, low(SNAKE_START)
+	ldi tmp, 0
+	ldi tmp2, 64
+	clear_sramS:
+		st Z+, tmp
+		dec tmp2
+		brne clear_sramS
 
 	; Port B and D as LED Output -- validated
 	ldi tmp, 0b11111111
@@ -294,7 +304,7 @@ RESET:
 	ldi r16, (1 << PCIE1)
 	sts PCICR, r16
 
-	; ICH WÜRDE GERNE MIT TIMERN ARBEITEN ABER TIMER1 ODER TIMER0 LÖSEN QUASI DURCHGEHEND AUS DESHALB NOCH CLI, WIRD BEHOBEN
+	
 	;sei
 	cli
 	rjmp start
@@ -342,7 +352,7 @@ button_down:
 	ldi direction, 2
 	
 	; Apfel setzen
-	rcall set_rpixel
+	rcall set_apfel
 
 	; Spiel Starten
 	rcall snake_init
@@ -358,7 +368,7 @@ button_right:
 
 
 	; Apfel setzen
-	rcall set_rpixel
+	rcall set_apfel
 	
 	; Spiel Starten
 	rcall snake_init
@@ -373,7 +383,7 @@ button_up:
 	ldi direction, 0
 
 	; Apfel setzen
-	rcall set_rpixel
+	rcall set_apfel
 	
 	; Spiel Starten
 	rcall snake_init
@@ -388,7 +398,7 @@ button_left:
 	ldi direction, 4
 
 	; Apfel setzen
-	rcall set_rpixel
+	rcall set_apfel
 	
 	; Spiel Starten
 	rcall snake_init
@@ -399,8 +409,13 @@ button_left:
 	rjmp main_loop
 
 main_loop:
-
-
+	
+	tst new_apple_needed
+	breq skip_apple
+	rcall set_apfel
+	ldi tmp, 0
+	mov new_apple_needed, tmp
+	skip_apple:
 
 
 	rcall display
@@ -450,23 +465,70 @@ wait_adc:
 
 
 
-
-; --------------- GENERTIERT WERT IN tmp2 von 0-63 und lässt diesen Pixel dann aufleuchten im SRAM bzw, setzt ihn auf 0b00000011 ---------
+; =========== APFEL GENERATOR ========================
+; --------------- GENERTIERT WERT IN tmp2 von 0-63 und lässt diesen Pixel dann aufleuchten im SRAM bzw, setzt ihn auf 3  ---------
 ; TODO ----> PRÜFEN OB PIXEL BEREITS AN IST. WENN JA -> set_rpixel ERNEUT AUFRUFEN
-set_rpixel:
-rcall read_adc_scaled        ; liefert tmp2 = 0–63
+set_apfel:
 
-    ; Z auf Zieladresse setzen
+	cli
+    push tmp
+    push tmp2
+    push tmp3
+    push tmp4
+    push ZL
+    push ZH
+    
+
+    ; hole erste Zufallsposition
+    rcall read_adc_scaled        ; tmp2 = Startposition (0–63)
+
+    ldi tmp4, 64                 ; Maximal 64 Versuche (alle Felder prüfen)
+
+find_free_pixel_loop:
+    ; Z auf Adresse 0x0100 + tmp2
     ldi ZH, high(0x0100)
     ldi ZL, low(0x0100)
     add ZL, tmp2
-    adc ZH, r1 ; eigentlich __zero_reg__ ???
+    adc ZH, __zero_reg__
 
-    ; Byte setzen
-    ldi tmp, 0b0000001
+    ; Pixel prüfen
+    ld tmp3, Z
+    tst tmp3
+    breq pixel_found
+
+    ; wenn nicht frei ? nächsten Pixel prüfen
+    inc tmp2
+    cpi tmp2, 64
+    brlo skip_wrap  
+    ldi tmp2, 0
+skip_wrap:
+    dec tmp4                     ; Versuch zählen
+    brne find_free_pixel_loop
+
+    ; Wenn hier ? alle 64 Pixel belegt (Game Over!)
+    sei
+    pop ZH
+    pop ZL
+    pop tmp4
+    pop tmp3
+    pop tmp2
+    pop tmp
+    rjmp game_over               ; alle Pixel belegt ? Ende!
+
+pixel_found:
+    ; Pixel auf Wert „3“ setzen (Apfel)
+    ldi tmp, 3
     st Z, tmp
 
-	ret
+	pop ZH
+    pop ZL
+    pop tmp4
+    pop tmp3
+    pop tmp2
+    pop tmp
+    sei
+    ret
+
 
 
 ; ==================== SNAKE MOVE ROUTINE (1 SCHRITT IN AKTUELLE RICHUNG) =======================
@@ -484,6 +546,7 @@ snake_move:
     push tmp2
     push tmp3
     push tmp4
+	push tmp5
 
     ;===========================
     ; 1. aktuellen Kopf holen
@@ -497,7 +560,8 @@ snake_move:
     ; 2. neuen Kopf berechnen
     cpi direction, 0       ; UP
     brne check_right
-    subi tmp, 8
+	ldi tmp5, 8
+    add tmp,tmp5
     rjmp direction_ok
 
 check_right:
@@ -509,7 +573,7 @@ check_right:
 check_down:
     cpi direction, 2
     brne check_left
-    subi tmp, -8
+    subi tmp, 8
     rjmp direction_ok
 
 check_left:
@@ -531,10 +595,16 @@ direction_ok:
     ld tmp2, Z
     cpi tmp2, 1
     breq game_over         ; Kollision mit sich selbst
-    cpi tmp2, 2
+    cpi tmp2, 3
     brne not_apple
+	; APFEL ERKANNT ----- 1. Setze grow_flag 2. Lösche Apfel aus Feld :::: MUSS NICHT NOCH NEUER APFEL GESETZT WERDEN?
 	ldi tmp4, 1
 	mov grow_flag, tmp4
+	ldi tmp4, 0
+	st Z, tmp4
+	ldi tmp4, 1
+	mov new_apple_needed, tmp4
+	
     rjmp store_head
 
 not_apple:
@@ -543,7 +613,7 @@ not_apple:
 
 store_head:
     ;===========================
-    ; 4. neuen Kopf ins Spielfeld setzen
+    ; 4. neuen Kopf ins Spielfeld setzen !!!!!!!!!!!!!! MUSS Z NICHT NOCH UM 1 ERHÖHRT WERDEN?
     ldi tmp2, 1
     st Z, tmp2
 
@@ -588,19 +658,22 @@ skip_wrap_h:
     ldi TailIndex, 0
 skip_wrap_t:
 
-    dec counter        ; Länge bleibt gleich
+    ;dec counter        ; Länge bleibt gleich
     rjmp finish
 
 skip_tail_delete:
     ; Schlange wächst
     ; counter erhöhen
     inc counter
+	;rcall set_apfel !!!!! TESTWEISE AUS UND DURCH APPLENEEDEDFLAG ERSETZT
     cpi counter, SNAKE_MAX
     brlo finish
     ; Wenn counter > MAX ? Game Over
     rjmp game_over
 
 finish:
+	
+	pop tmp5
     pop tmp4
     pop tmp3
     pop tmp2
@@ -613,8 +686,10 @@ game_over:
 
 
 
+
+
+;============================= SCHLANGE INITIALISIERUNG ================================
 snake_init:
-;=============================
 	; SPIELFELD: zwei Pixel setzen (Offsets 26 und 27)
 	ldi ZH, high(0x0100)
 	ldi ZL, low(0x0100)
@@ -636,8 +711,8 @@ snake_init:
 
 	;=============================
 	; RINGPUFFER: 26 und 27 speichern
-	ldi ZH, high(0x01C7)
-	ldi ZL, low(0x01C7)
+	ldi ZH, high(SNAKE_START)
+	ldi ZL, low(SNAKE_START)
 	ldi tmp2, 26
 	st Z+, tmp2
 	ldi tmp2, 27
